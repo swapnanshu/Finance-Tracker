@@ -1,0 +1,38 @@
+import type { Metadata } from 'next';
+import './globals.css';
+import { Inter, Space_Grotesk } from 'next/font/google';
+import { AuthProvider } from '@/components/auth-provider';
+
+const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
+const space = Space_Grotesk({ subsets: ['latin'], variable: '--font-space' });
+
+export const metadata: Metadata = {
+  title: 'Finance Copilot',
+  description: 'AI-powered personal finance assistant',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Copilot',
+  },
+};
+
+export const viewport = {
+  themeColor: '#030712',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en" className={`dark ${inter.variable} ${space.variable}`}>
+      <body suppressHydrationWarning className="font-sans text-gray-100 bg-gray-950 flex flex-col min-h-screen antialiased">
+        <AuthProvider>
+          {children}
+        </AuthProvider>
+      </body>
+    </html>
+  );
+}
