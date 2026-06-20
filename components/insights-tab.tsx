@@ -49,7 +49,7 @@ export default function InsightsTab({ currentBalance }: { currentBalance?: numbe
       <div className="bg-[#1E293B] text-white p-5 rounded-xl flex flex-col shadow-lg border border-white/5 h-[400px]">
         <div className="flex items-center gap-2 mb-4 shrink-0">
           <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
-          <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Copilot AI</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Artha Kosha AI</span>
         </div>
         <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-4">
           {messages.map((msg, idx) => (

@@ -36,7 +36,7 @@ export default function Page() {
       <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-3xl font-bold tracking-tight">Finance Copilot</CardTitle>
+            <CardTitle className="text-3xl font-bold tracking-tight">Artha Kosha</CardTitle>
             <CardDescription className="text-gray-500 mt-2">
               Your autonomous personal accountant. Track, categorize, and grow your wealth effortlessly.
             </CardDescription>
