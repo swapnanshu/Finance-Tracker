@@ -1,19 +1,47 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/components/auth-provider';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 
 export default function InsightsTab({ currentBalance }: { currentBalance?: number }) {
   const { token } = useAuth();
   const [chatInput, setChatInput] = useState('');
   const [messages, setMessages] = useState([
-    { role: 'assistant', text: 'Your food expenses are 25% higher on Food Delivery this week compared to last week.' },
-    { role: 'assistant', text: 'Great job! You stayed within your ₹10,000 grocery budget.' },
-    { role: 'assistant', text: `Your current SBI balance is ₹${(currentBalance || 245000).toLocaleString('en-IN')}. Need any help forecasting your month?` },
+    { role: 'assistant', text: 'Ask me anything about your finances — spending trends, budgets, subscriptions, or savings forecasting.' },
   ]);
   const [isTyping, setIsTyping] = useState(false);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loadingTx, setLoadingTx] = useState(true);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch('/api/transactions', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setTransactions(Array.isArray(data) ? data : []))
+      .catch(() => setTransactions([]))
+      .finally(() => setLoadingTx(false));
+  }, [token]);
+
+  const categorySpend = useMemo(() => {
+    const now = new Date();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const monthTx = transactions.filter((t: any) => String(t?.date || '').startsWith(ym) && t.type === 'expense');
+    const total = monthTx.reduce((acc: number, t: any) => acc + Number(t.amount || 0), 0);
+    const byCat: Record<string, number> = {};
+    for (const t of monthTx) {
+      const cat = t.category || 'Miscellaneous';
+      byCat[cat] = (byCat[cat] || 0) + Number(t.amount || 0);
+    }
+    return Object.entries(byCat)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 7)
+      .map(([name, amount]) => ({
+        name,
+        amount,
+        percent: total > 0 ? Math.round((amount / total) * 100) : 0,
+      }));
+  }, [transactions]);
 
   const handleSend = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -83,18 +111,24 @@ export default function InsightsTab({ currentBalance }: { currentBalance?: numbe
           <p className="text-xs text-gray-500 mt-1">This month&apos;s breakdown</p>
         </div>
         <div className="flex-1 overflow-y-auto pr-2 space-y-4">
-           <CategoryRow name="Food & Dining" amount={14500} percent={35} />
-           <CategoryRow name="Groceries" amount={8200} percent={20} />
-           <CategoryRow name="Transport" amount={4500} percent={10} />
-           <CategoryRow name="Shopping" amount={12000} percent={25} />
-           <CategoryRow name="Utilities" amount={4200} percent={10} />
+          {loadingTx ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="w-5 h-5 animate-spin text-gray-500" />
+            </div>
+          ) : categorySpend.length === 0 ? (
+            <p className="text-xs text-gray-500 text-center mt-12">No expense transactions recorded this month yet.</p>
+          ) : (
+            categorySpend.map(({ name, amount, percent }) => (
+              <CategoryRow key={name} name={name} amount={amount} percent={percent} />
+            ))
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function CategoryRow({ name, amount, percent }: any) {
+function CategoryRow({ name, amount, percent }: { name: string; amount: number; percent: number }) {
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-sm">
@@ -102,7 +136,7 @@ function CategoryRow({ name, amount, percent }: any) {
         <span className="text-gray-500 font-mono">₹{amount.toLocaleString('en-IN')}</span>
       </div>
       <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden">
-        <div className="h-full bg-indigo-500" style={{ width: `${percent}%` }}></div>
+        <div className="h-full bg-indigo-500 transition-all" style={{ width: `${percent}%` }}></div>
       </div>
     </div>
   );

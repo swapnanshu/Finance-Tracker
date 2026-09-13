@@ -6,4 +6,9 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const googleAuthProvider = new GoogleAuthProvider();
 googleAuthProvider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+googleAuthProvider.setCustomParameters({
+  access_type: 'offline',
+  prompt: 'consent'
+});
+
 

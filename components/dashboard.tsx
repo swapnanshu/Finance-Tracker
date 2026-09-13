@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,37 +10,81 @@ import { auth } from '@/src/lib/firebase';
 import { signOut } from 'firebase/auth';
 import TransactionsTab from './transactions-tab';
 import InsightsTab from './insights-tab';
+import BudgetTab from './budget-tab';
+import AnalyticsTab from './analytics-tab';
 
 export default function Dashboard() {
   const { user, token } = useAuth();
   const [activeSection, setActiveSection] = useState('dashboard');
-  
-  const [currentBalance, setCurrentBalance] = useState(245000);
+
+  const [currentBalance, setCurrentBalance] = useState(0);
   const [isSyncingBalance, setIsSyncingBalance] = useState(false);
   const [monthlySpend, setMonthlySpend] = useState(0);
+  const [monthlyIncome, setMonthlyIncome] = useState(0);
+  const [creditUsage, setCreditUsage] = useState(0);
+  const [creditCardCount, setCreditCardCount] = useState(0);
+  const [recentTx, setRecentTx] = useState<any[]>([]);
 
   useEffect(() => {
-    if (token) {
-      fetch('/api/transactions', { headers: { Authorization: `Bearer ${token}` }})
-        .then(r => r.ok ? r.json() : [])
-        .then(data => {
-          if (Array.isArray(data)) {
-            const spend = data.filter((t: any) => t.type === 'expense').reduce((acc: number, t: any) => acc + Number(t.amount || 0), 0);
-            setMonthlySpend(spend);
-          }
-        })
-        .catch(console.error);
-    }
+    if (!token) return;
+
+    const run = async () => {
+      // Accounts total balance & credit utilization
+      const accRes = await fetch('/api/accounts', { headers: { Authorization: `Bearer ${token}` } });
+      if (accRes.ok) {
+        const accJson = await accRes.json();
+        setCurrentBalance(Number(accJson?.totalBalance || 0));
+
+        const ccAccounts = (accJson?.accounts || []).filter((a: any) => a.type === 'credit_card' && a.isActive);
+        const totalLimit = ccAccounts.reduce((acc: number, a: any) => acc + Number(a.creditLimit || 0), 0);
+        const totalUsed = ccAccounts.reduce((acc: number, a: any) => acc + Math.abs(Number(a.currentBalance || 0)), 0);
+        if (totalLimit > 0) {
+          setCreditUsage(Math.round((totalUsed / totalLimit) * 100));
+        } else {
+          setCreditUsage(0);
+        }
+        setCreditCardCount(ccAccounts.length);
+      }
+
+      // Transactions for current month + recent activity
+      const txRes = await fetch('/api/transactions', { headers: { Authorization: `Bearer ${token}` } });
+      const txJson = txRes.ok ? await txRes.json() : [];
+
+      const now = new Date();
+      const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+      if (Array.isArray(txJson)) {
+        const monthTx = txJson.filter((t: any) => String(t?.date || '').startsWith(`${ym}-`));
+        const spend = monthTx.filter((t: any) => t.type === 'expense').reduce((acc: number, t: any) => acc + Number(t.amount || 0), 0);
+        const income = monthTx.filter((t: any) => t.type === 'income').reduce((acc: number, t: any) => acc + Number(t.amount || 0), 0);
+
+        setMonthlySpend(spend);
+        setMonthlyIncome(income);
+
+        // Recent activity (last 5 by date desc already from API, but keep safe)
+        setRecentTx((txJson || []).slice(0, 5));
+      }
+    };
+
+    run().catch(console.error);
   }, [token]);
 
-  const savingsRate = ((currentBalance / (currentBalance + monthlySpend || 1)) * 100).toFixed(1);
+  const savingsRate = useMemo(() => {
+    const income = monthlyIncome || 0;
+    if (income <= 0) return '0.0';
+    const net = income - (monthlySpend || 0);
+    return (net / income * 100).toFixed(1);
+  }, [monthlyIncome, monthlySpend]);
 
   const handleSyncBalance = async () => {
     setIsSyncingBalance(true);
     try {
-      // Simulate real-time sync from SBI API
-      await new Promise(r => setTimeout(r, 1500));
-      setCurrentBalance(251200); // Updated value after sync
+      // Keep existing UX without adding new ingestion. Re-fetch accounts.
+      const accRes = await fetch('/api/accounts', { headers: { Authorization: `Bearer ${token}` } });
+      if (accRes.ok) {
+        const accJson = await accRes.json();
+        setCurrentBalance(Number(accJson?.totalBalance || 0));
+      }
     } finally {
       setIsSyncingBalance(false);
     }
@@ -103,7 +147,13 @@ export default function Dashboard() {
                    progress={true} 
                 />
                 <StatCard title="Savings Rate" value={`${savingsRate}%`} valClass="text-indigo-400" subtitle="Estimated vs Spend" subtitleClass="text-[10px] text-emerald-400 mt-2" />
-                <StatCard title="Credit Usage" value="22%" valClass="text-orange-400" subtitle="Across 3 cards" subtitleClass="text-[10px] text-gray-500 mt-2" />
+                <StatCard 
+                  title="Credit Usage" 
+                  value={`${creditUsage}%`} 
+                  valClass={creditUsage > 80 ? "text-red-400" : creditUsage > 50 ? "text-orange-400" : "text-emerald-400"} 
+                  subtitle={`Across ${creditCardCount} card${creditCardCount !== 1 ? 's' : ''}`} 
+                  subtitleClass="text-[10px] text-gray-500 mt-2" 
+                />
               </div>
 
               {/* Main Content Tabs */}
@@ -111,6 +161,8 @@ export default function Dashboard() {
                 <TabsList className="mb-4 self-start shrink-0 bg-gray-900 border border-gray-800">
                   <TabsTrigger value="transactions" className="data-[state=active]:bg-gray-800 data-[state=active]:text-white text-gray-400">Transactions</TabsTrigger>
                   <TabsTrigger value="insights" className="data-[state=active]:bg-gray-800 data-[state=active]:text-white text-gray-400">Insights</TabsTrigger>
+                  <TabsTrigger value="budget" className="data-[state=active]:bg-gray-800 data-[state=active]:text-white text-gray-400">Budget</TabsTrigger>
+                  <TabsTrigger value="analytics" className="data-[state=active]:bg-gray-800 data-[state=active]:text-white text-gray-400">Analytics</TabsTrigger>
                 </TabsList>
                 
                 <TabsContent value="transactions" className="flex-1 overflow-hidden m-0 data-[state=active]:flex data-[state=active]:flex-col">
@@ -118,6 +170,12 @@ export default function Dashboard() {
                 </TabsContent>
                 <TabsContent value="insights" className="flex-1 overflow-y-auto m-0">
                   <InsightsTab currentBalance={currentBalance} />
+                </TabsContent>
+                <TabsContent value="budget" className="flex-1 overflow-y-auto m-0">
+                  <BudgetTab />
+                </TabsContent>
+                <TabsContent value="analytics" className="flex-1 overflow-y-auto m-0">
+                  <AnalyticsTab />
                 </TabsContent>
               </Tabs>
             </>

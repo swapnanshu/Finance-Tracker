@@ -5,5 +5,6 @@
   "authDomain": "gen-lang-client-0050195566.firebaseapp.com",
   "storageBucket": "gen-lang-client-0050195566.firebasestorage.app",
   "messagingSenderId": "770498442872",
-  "measurementId": ""
+  "measurementId": "",
+  "firestoreDatabaseId": "artha-kosha"
 }

@@ -22,5 +22,13 @@
       "type": "image/png",
       "sizes": "512x512"
     }
-  ]
+  ],
+  "share_target": {
+    "action": "/api/sync-manual",
+    "method": "POST",
+    "enctype": "application/json",
+    "params": {
+      "text": "text"
+    }
+  }
 }

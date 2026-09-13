@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, Search, BrainCircuit, Mail, Download } from 'lucide-react';
+import { Loader2, Search, BrainCircuit, Download } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 import * as XLSX from 'xlsx';
@@ -18,11 +18,58 @@ export default function TransactionsTab() {
   const [loading, setLoading] = useState(true);
   const [prompt, setPrompt] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfPassword, setPdfPassword] = useState('');
   const [bankType, setBankType] = useState('ICICI');
+
+  const [editingTxId, setEditingTxId] = useState<string | null>(null);
+  const [editingMerchantName, setEditingMerchantName] = useState<string>("");
+
+  const CATEGORIES = [
+    "Income", "Food", "Groceries", "Shopping", "Transport", "Utilities",
+    "Healthcare", "Entertainment", "Travel", "Investments", "Insurance",
+    "Education", "Transfers", "Taxes", "Rent", "EMI", "Subscriptions", "Miscellaneous"
+  ];
+
+  const handleUpdateCategory = async (txId: string, newCategory: string) => {
+    try {
+      const res = await fetch('/api/transactions', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ id: txId, category: newCategory })
+      });
+      if (res.ok) {
+        setTransactions(prev => prev.map(tx => tx.id === txId ? { ...tx, category: newCategory, isVerified: true } : tx));
+      }
+    } catch (err) {
+      console.error('Failed to update category:', err);
+    }
+  };
+
+  const handleUpdateMerchantName = async (txId: string, newMerchantName: string) => {
+    setEditingTxId(null);
+    if (!newMerchantName.trim()) return;
+    try {
+      const res = await fetch('/api/transactions', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ id: txId, merchantName: newMerchantName })
+      });
+      if (res.ok) {
+        setTransactions(prev => prev.map(tx => tx.id === txId ? { ...tx, merchantName: newMerchantName, isVerified: true } : tx));
+      }
+    } catch (err) {
+      console.error('Failed to update merchant name:', err);
+    }
+  };
+
 
   const exportToExcel = () => {
     if (transactions.length === 0) return;
@@ -87,46 +134,6 @@ export default function TransactionsTab() {
     }
   }, [token]);
 
-  const syncGmail = async () => {
-    const accessToken = localStorage.getItem('googleAccessToken');
-    if (!accessToken) {
-      alert("Please sign out and sign back in to grant Gmail access.");
-      return;
-    }
-    
-    setIsSyncing(true);
-    try {
-      const res = await fetch('/api/sync-emails', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessToken })
-      });
-      const data = await res.json();
-      
-      if (data.transactions && data.transactions.length > 0) {
-        // Here we could batch save them to our DB, for now let's just push to standard mock or our API endpoint
-        // It's a prototype so we'll just show them or re-fetch.
-        // If we want to persist them, we call our simulate endpoint for each or a batch save.
-        // For now, we'll just post them individually.
-        for (const tx of data.transactions) {
-           await fetch('/api/transactions/simulate', {
-             method: 'POST',
-             headers: {
-               'Content-Type': 'application/json',
-               Authorization: `Bearer ${token}`
-             },
-             body: JSON.stringify({ message: `Paid ${tx.amount} to ${tx.merchantName} forming a ${tx.type}` }) // sending mock msg to trigger save
-           });
-        }
-        await fetchTransactions();
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const handleSimulateSMS = async () => {
     setIsProcessing(true);
     try {
@@ -162,15 +169,6 @@ export default function TransactionsTab() {
             title="Export Excel"
           >
             <Download className="w-4 h-4" />
-          </Button>
-          <Button 
-            variant="outline" 
-            className="gap-2 h-9 text-xs font-semibold bg-gray-900 border border-gray-800 text-gray-300 shadow-sm hover:bg-gray-800"
-            onClick={syncGmail}
-            disabled={isSyncing}
-          >
-            {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-            Sync Gmail
           </Button>
           <Dialog>
             <DialogTrigger render={<Button variant="secondary" className="gap-2 h-9 text-xs font-semibold bg-gray-900 border border-gray-800 text-gray-300 shadow-sm hover:bg-gray-800" />}>
@@ -258,12 +256,45 @@ export default function TransactionsTab() {
                 {transactions.map((tx) => (
                   <TableRow key={tx.id} className="border-b border-gray-800/50 hover:bg-gray-800/50 transition-colors cursor-pointer">
                     <TableCell className="px-4 py-3 font-mono text-[10px] text-gray-400 font-medium">{tx.date}</TableCell>
-                    <TableCell className="px-4 py-3 font-bold text-gray-200">{tx.merchantName}</TableCell>
-                    <TableCell className="px-4 py-3">
-                       <span className={`px-2 py-1 rounded text-[9px] uppercase font-bold ${tx.type === 'expense' ? 'bg-orange-500/10 text-orange-400' : 'bg-emerald-500/10 text-emerald-400'}`}>{tx.category}</span>
+                    <TableCell className="px-4 py-3 font-bold text-gray-200">
+                      {editingTxId === tx.id ? (
+                        <Input
+                          value={editingMerchantName}
+                          onChange={(e) => setEditingMerchantName(e.target.value)}
+                          onBlur={() => handleUpdateMerchantName(tx.id, editingMerchantName)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleUpdateMerchantName(tx.id, editingMerchantName);
+                            if (e.key === 'Escape') setEditingTxId(null);
+                          }}
+                          autoFocus
+                          className="h-7 text-xs bg-gray-950 text-gray-200 border-gray-800 focus:border-indigo-500 max-w-[180px]"
+                        />
+                      ) : (
+                        <span 
+                          onDoubleClick={() => {
+                            setEditingTxId(tx.id);
+                            setEditingMerchantName(tx.merchantName);
+                          }}
+                          title="Double-click to edit merchant name"
+                          className="cursor-pointer hover:text-indigo-400 transition-colors"
+                        >
+                          {tx.merchantName}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="px-4 py-3">
-                       {tx.type === 'expense' ? <span className="text-emerald-400 text-xs font-bold">✓ AI</span> : <span className="text-emerald-400 text-xs font-bold">✓ Verified</span>}
+                      <select 
+                        value={tx.category}
+                        onChange={(e) => handleUpdateCategory(tx.id, e.target.value)}
+                        className="bg-transparent border border-gray-800 rounded px-1.5 py-0.5 text-[10px] font-bold text-gray-300 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                      >
+                         {CATEGORIES.map(cat => (
+                           <option key={cat} value={cat} className="bg-gray-950 text-gray-300">{cat}</option>
+                         ))}
+                      </select>
+                    </TableCell>
+                    <TableCell className="px-4 py-3">
+                       {tx.isVerified ? <span className="text-emerald-400 text-xs font-bold">✓ Verified</span> : <span className="text-indigo-400 text-xs font-bold">✓ AI</span>}
                     </TableCell>
                     <TableCell className={`px-4 py-3 text-right font-bold ${tx.type === 'expense' ? 'text-gray-200' : 'text-emerald-400'}`}>
                       {tx.type === 'expense' ? '-₹' : '+₹'}{parseFloat(tx.amount).toLocaleString('en-IN')}
